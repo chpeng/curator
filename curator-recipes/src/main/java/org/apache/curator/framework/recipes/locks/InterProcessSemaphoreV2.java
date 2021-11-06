@@ -79,6 +79,7 @@ import java.util.concurrent.TimeUnit;
 public class InterProcessSemaphoreV2
 {
     private final Logger log = LoggerFactory.getLogger(getClass());
+
     private final InterProcessMutex lock;
     private final WatcherRemoveCuratorFramework client;
     private final String leasesPath;
@@ -124,8 +125,10 @@ public class InterProcessSemaphoreV2
 
     private InterProcessSemaphoreV2(CuratorFramework client, String path, int maxLeases, SharedCountReader count)
     {
+
         this.client = client.newWatcherRemoveCuratorFramework();
         path = PathUtils.validatePath(path);
+        // 这个lock是可重入的锁
         lock = new InterProcessMutex(client, ZKPaths.makePath(path, LOCK_PARENT));
         this.maxLeases = (count != null) ? count.getCount() : maxLeases;
         leasesPath = ZKPaths.makePath(path, LEASE_PARENT);
@@ -283,14 +286,17 @@ public class InterProcessSemaphoreV2
                 {
                     switch ( internalAcquire1Lease(builder, startMs, hasWait, waitMs) )
                     {
+                        // 可以进去，
                         case CONTINUE:
                         {
                             isDone = true;
                             break;
                         }
 
+                        // 这个表示返回null
                         case RETURN_NULL:
                         {
+                            // 跳出本次循环
                             return null;
                         }
 
@@ -349,6 +355,7 @@ public class InterProcessSemaphoreV2
         }
         else
         {
+            // 调用重入锁 加锁逻辑，如果获取到锁，就往下执行，如果没有获取到，则在这里等待
             lock.acquire();
         }
 
@@ -357,7 +364,10 @@ public class InterProcessSemaphoreV2
 
         try
         {
+            // 创建一个临时顺序节点 /chp/lock/lease-xxxxxxxxxxx
             PathAndBytesable<String> createBuilder = client.create().creatingParentContainersIfNeeded().withProtection().withMode(CreateMode.EPHEMERAL_SEQUENTIAL);
+
+
             String path = (nodeData != null) ? createBuilder.forPath(ZKPaths.makePath(leasesPath, LEASE_BASE_NAME), nodeData) : createBuilder.forPath(ZKPaths.makePath(leasesPath, LEASE_BASE_NAME));
             String nodeName = ZKPaths.getNodeFromPath(path);
             lease = makeLease(path);
@@ -392,6 +402,7 @@ public class InterProcessSemaphoreV2
                             return InternalAcquireResult.RETRY_DUE_TO_MISSING_NODE;
                         }
 
+                        // 如果数量小于maxLeases，则表示可以上锁。加锁成功
                         if ( children.size() <= maxLeases )
                         {
                             break;

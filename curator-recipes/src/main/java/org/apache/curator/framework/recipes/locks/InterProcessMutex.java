@@ -40,12 +40,16 @@ public class InterProcessMutex implements InterProcessLock, Revocable<InterProce
     private final LockInternals internals;
     private final String basePath;
 
+    // 用保存线程对应的LockData
     private final ConcurrentMap<Thread, LockData> threadData = Maps.newConcurrentMap();
 
     private static class LockData
     {
+        // 线程id
         final Thread owningThread;
+        // 锁映射到zk的路径
         final String lockPath;
+        // 重入锁记录的数量
         final AtomicInteger lockCount = new AtomicInteger(1);
 
         private LockData(Thread owningThread, String lockPath)
@@ -133,6 +137,7 @@ public class InterProcessMutex implements InterProcessLock, Revocable<InterProce
             can be only acted on by a single thread so locking isn't necessary
          */
 
+        // 获取当前线程加的锁
         Thread currentThread = Thread.currentThread();
         LockData lockData = threadData.get(currentThread);
         if ( lockData == null )
@@ -140,17 +145,21 @@ public class InterProcessMutex implements InterProcessLock, Revocable<InterProce
             throw new IllegalMonitorStateException("You do not own the lock: " + basePath);
         }
 
+        // 将重入锁数量减1
         int newLockCount = lockData.lockCount.decrementAndGet();
+        // 如果不为0 ，则说名是重入锁，并且还有线程持有改锁
         if ( newLockCount > 0 )
         {
             return;
         }
+
         if ( newLockCount < 0 )
         {
             throw new IllegalMonitorStateException("Lock count has gone negative for lock: " + basePath);
         }
         try
         {
+            // 如果==0 说明，锁需要释放
             internals.releaseLock(lockData.lockPath);
         }
         finally
@@ -224,19 +233,26 @@ public class InterProcessMutex implements InterProcessLock, Revocable<InterProce
            can be only acted on by a single thread so locking isn't necessary
         */
 
+        // 获取当前线程
         Thread currentThread = Thread.currentThread();
 
+        // 获取当前线程锁的数据
         LockData lockData = threadData.get(currentThread);
+
+        // 如果不为空，则说明当前线程已经获取锁了
         if ( lockData != null )
         {
             // re-entering
+            // 这个是重入锁的实现方式，lockCount + 1
             lockData.lockCount.incrementAndGet();
             return true;
         }
 
+        // 获取zk锁的
         String lockPath = internals.attemptLock(time, unit, getLockNodeBytes());
         if ( lockPath != null )
         {
+            // 创建一个localData,保存当前id和lockpath
             LockData newLockData = new LockData(currentThread, lockPath);
             threadData.put(currentThread, newLockData);
             return true;

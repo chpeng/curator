@@ -63,6 +63,7 @@ public class LockInternals
 
     private final Watcher watcher = new Watcher()
     {
+        // 会环形所有的wait的线程
         @Override
         public void process(WatchedEvent event)
         {
@@ -103,6 +104,7 @@ public class LockInternals
 
         this.client = client.newWatcherRemoveCuratorFramework();
         this.basePath = PathUtils.validatePath(path);
+        // 生成path路径
         this.path = ZKPaths.makePath(path, lockName);
     }
 
@@ -119,6 +121,7 @@ public class LockInternals
 
     final void releaseLock(String lockPath) throws Exception
     {
+        // 删除监听
         client.removeWatchers();
         revocable.set(null);
         deleteOurPath(lockPath);
@@ -151,16 +154,20 @@ public class LockInternals
     {
         try
         {
+            // zk获取 basePath下的所有子节点
             List<String> children = client.getChildren().forPath(basePath);
             List<String> sortedList = Lists.newArrayList(children);
+
+            // 排序方法
             Collections.sort
             (
-                sortedList,
+                sortedList, // 药排序的集合
                 new Comparator<String>()
                 {
                     @Override
                     public int compare(String lhs, String rhs)
                     {
+                        // 节点比较
                         return sorter.fixForSorting(lhs, lockName).compareTo(sorter.fixForSorting(rhs, lockName));
                     }
                 }
@@ -208,6 +215,7 @@ public class LockInternals
 
     String attemptLock(long time, TimeUnit unit, byte[] lockNodeBytes) throws Exception
     {
+        // 开始时间
         final long      startMillis = System.currentTimeMillis();
         final Long      millisToWait = (unit != null) ? unit.toMillis(time) : null;
         final byte[]    localLockNodeBytes = (revocable.get() != null) ? new byte[0] : lockNodeBytes;
@@ -222,6 +230,7 @@ public class LockInternals
 
             try
             {
+                // 在zk创建一个锁的节点数据
                 ourPath = driver.createsTheLock(client, path, localLockNodeBytes);
                 hasTheLock = internalLockLoop(startMillis, millisToWait, ourPath);
             }
@@ -281,8 +290,13 @@ public class LockInternals
 
             while ( (client.getState() == CuratorFrameworkState.STARTED) && !haveTheLock )
             {
+
+                // lockpatch下所有的子节点 /chp/lock/xxxxxxxx
                 List<String>        children = getSortedChildren();
+
+                // 获取后面的字符串
                 String              sequenceNodeName = ourPath.substring(basePath.length() + 1); // +1 to include the slash
+
 
                 PredicateResults    predicateResults = driver.getsTheLock(client, children, sequenceNodeName, maxLeases);
                 if ( predicateResults.getsTheLock() )
@@ -291,6 +305,7 @@ public class LockInternals
                 }
                 else
                 {
+                    // 拼装药监听的节点，也就是上一个节点
                     String  previousSequencePath = basePath + "/" + predicateResults.getPathToWatch();
 
                     synchronized(this)
@@ -298,6 +313,7 @@ public class LockInternals
                         try
                         {
                             // use getData() instead of exists() to avoid leaving unneeded watchers which is a type of resource leak
+                            // 添加监听器watcher
                             client.getData().usingWatcher(watcher).forPath(previousSequencePath);
                             if ( millisToWait != null )
                             {
@@ -344,6 +360,7 @@ public class LockInternals
     {
         try
         {
+            // 删掉zk上的节点数据
             client.delete().guaranteed().forPath(ourPath);
         }
         catch ( KeeperException.NoNodeException e )

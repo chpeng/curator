@@ -32,6 +32,7 @@ public class StandardLockInternalsDriver implements LockInternalsDriver
     @Override
     public PredicateResults getsTheLock(CuratorFramework client, List<String> children, String sequenceNodeName, int maxLeases) throws Exception
     {
+        // 获取当前节点对应的位置,children排完续的子节点，找到当前多在子节点的位置
         int             ourIndex = children.indexOf(sequenceNodeName);
         validateOurIndex(sequenceNodeName, ourIndex);
 
@@ -51,6 +52,8 @@ public class StandardLockInternalsDriver implements LockInternalsDriver
         }
         else
         {
+            // 走这一行，创建一个临时的顺序节点
+            // /chp/lock/_c_eed690d4-71c1-4754-999a-91523ffe09cd-lock-0000000000
             ourPath = client.create().creatingParentContainersIfNeeded().withProtection().withMode(CreateMode.EPHEMERAL_SEQUENTIAL).forPath(path);
         }
         return ourPath;
